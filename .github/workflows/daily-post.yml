@@ -1,0 +1,51 @@
+name: Daily Fukugyo Nikki Post
+
+on:
+  schedule:
+    - cron: "37 22 * * *"  # 07:37 JST
+  workflow_dispatch: {}
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Pre-accept Claude Code workspace trust
+        run: |
+          mkdir -p ~/.claude
+          printf '{"projects":{"%s":{"hasTrustDialogAccepted":true}}}' "${{ github.workspace }}" > ~/.claude.json
+
+      - name: Run daily prompt
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+        run: |
+          claude -p "$(cat fukugyo_prompt.md)" --allowedTools Bash
+
+      - name: Commit and push updated log back to this repo
+        run: |
+          git config --global user.email "bot@fukugyo-nikki-bot.local"
+          git config --global user.name "fukugyo-nikki-bot"
+          git add log.jsonl 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "log update $(date -u +%Y-%m-%d)"
+          git push
